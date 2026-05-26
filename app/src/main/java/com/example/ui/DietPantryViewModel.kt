@@ -64,6 +64,13 @@ class DietPantryViewModel(private val repository: AppRepository) : ViewModel() {
             initialValue = UserGoal()
         )
 
+    val loggedInUser: StateFlow<UserAccount?> = repository.loggedInUserFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
     // AI States
     private val _recipeUiState = MutableStateFlow<RecipeUiState>(RecipeUiState.Idle)
     val recipeUiState: StateFlow<RecipeUiState> = _recipeUiState.asStateFlow()
@@ -147,6 +154,56 @@ class DietPantryViewModel(private val repository: AppRepository) : ViewModel() {
                     dailyCarbsGoal = dailyCarbsGoal,
                     dailyFatGoal = dailyFatGoal,
                     dietPreference = dietPreference
+                )
+            )
+        }
+    }
+
+    fun signUp(username: String, passwordPlaintext: String, fullName: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            if (username.isBlank() || passwordPlaintext.isBlank() || fullName.isBlank()) {
+                onResult(false, "Please fill in all fields.")
+                return@launch
+            }
+            val success = repository.signUpUser(username, passwordPlaintext, fullName)
+            if (success) {
+                onResult(true, "Successfully registered!")
+            } else {
+                onResult(false, "Username already exists.")
+            }
+        }
+    }
+
+    fun login(username: String, passwordPlaintext: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            if (username.isBlank() || passwordPlaintext.isBlank()) {
+                onResult(false, "Please enter your username and password.")
+                return@launch
+            }
+            val success = repository.loginUser(username, passwordPlaintext)
+            if (success) {
+                onResult(true, "Welcome back!")
+            } else {
+                onResult(false, "Invalid username or password.")
+            }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            repository.logoutUser()
+        }
+    }
+
+    fun updateProfile(fullName: String, avatarUrl: String, aboutMe: String, information: String) {
+        val currentUser = loggedInUser.value ?: return
+        viewModelScope.launch {
+            repository.updateUserProfile(
+                currentUser.copy(
+                    fullName = fullName.trim(),
+                    avatarUrl = avatarUrl,
+                    aboutMe = aboutMe.trim(),
+                    information = information.trim()
                 )
             )
         }

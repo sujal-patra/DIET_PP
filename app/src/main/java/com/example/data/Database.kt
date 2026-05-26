@@ -56,15 +56,37 @@ interface UserGoalDao {
     suspend fun insertUserGoal(goal: UserGoal)
 }
 
+@Dao
+interface UserAccountDao {
+    @Query("SELECT * FROM user_accounts WHERE isLoggedIn = 1 LIMIT 1")
+    fun getLoggedInUserFlow(): Flow<UserAccount?>
+
+    @Query("SELECT * FROM user_accounts WHERE isLoggedIn = 1 LIMIT 1")
+    suspend fun getLoggedInUser(): UserAccount?
+
+    @Query("SELECT * FROM user_accounts WHERE username = :username LIMIT 1")
+    suspend fun getUserByUsername(username: String): UserAccount?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUser(user: UserAccount)
+
+    @Query("UPDATE user_accounts SET isLoggedIn = 0")
+    suspend fun logoutAll()
+
+    @Query("UPDATE user_accounts SET isLoggedIn = 1 WHERE id = :userId")
+    suspend fun setLoggedIn(userId: Int)
+}
+
 @Database(
-    entities = [PantryItem::class, DietLog::class, UserGoal::class],
-    version = 1,
+    entities = [PantryItem::class, DietLog::class, UserGoal::class, UserAccount::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pantryDao(): PantryDao
     abstract fun dietLogDao(): DietLogDao
     abstract fun userGoalDao(): UserGoalDao
+    abstract fun userAccountDao(): UserAccountDao
 
     companion object {
         @Volatile
@@ -76,7 +98,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "diet_pantry_db"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }

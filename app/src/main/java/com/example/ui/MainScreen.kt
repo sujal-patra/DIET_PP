@@ -5,6 +5,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,6 +48,8 @@ import java.util.*
 @Composable
 fun MainScreen(viewModel: DietPantryViewModel) {
     val context = LocalContext.current
+    val loggedInUser by viewModel.loggedInUser.collectAsStateWithLifecycle()
+    var showProfileDialog by remember { mutableStateOf(false) }
     var currentTab by remember { mutableStateOf(0) }
 
     val pantryList by viewModel.pantryItems.collectAsStateWithLifecycle()
@@ -57,116 +60,143 @@ fun MainScreen(viewModel: DietPantryViewModel) {
     val recipeState by viewModel.recipeUiState.collectAsStateWithLifecycle()
     val analysisState by viewModel.analysisUiState.collectAsStateWithLifecycle()
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize().testTag("main_scaffold"),
-        bottomBar = {
-            NavigationBar(
-                modifier = Modifier.testTag("main_navigation_bar"),
-                windowInsets = WindowInsets.navigationBars
+    if (loggedInUser == null) {
+        AuthScreen(viewModel = viewModel)
+    } else {
+        Scaffold(
+            modifier = Modifier.fillMaxSize().testTag("main_scaffold"),
+            bottomBar = {
+                NavigationBar(
+                    modifier = Modifier.testTag("main_navigation_bar"),
+                    windowInsets = WindowInsets.navigationBars
+                ) {
+                    NavigationBarItem(
+                        selected = currentTab == 0,
+                        onClick = { currentTab = 0 },
+                        icon = { Icon(Icons.Default.Kitchen, contentDescription = "Pantry Inventory") },
+                        label = { Text("Pantry") },
+                        modifier = Modifier.testTag("tab_pantry")
+                    )
+                    NavigationBarItem(
+                        selected = currentTab == 1,
+                        onClick = { currentTab = 1 },
+                        icon = { Icon(Icons.Default.Restaurant, contentDescription = "Diet Logs") },
+                        label = { Text("Diet Log") },
+                        modifier = Modifier.testTag("tab_diet")
+                    )
+                    NavigationBarItem(
+                        selected = currentTab == 2,
+                        onClick = { currentTab = 2 },
+                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "AI Magic Chef") },
+                        label = { Text("AI Chef") },
+                        modifier = Modifier.testTag("tab_ai_chef")
+                    )
+                    NavigationBarItem(
+                        selected = currentTab == 3,
+                        onClick = { currentTab = 3 },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = "Personalized Coaching") },
+                        label = { Text("Coach & Goals") },
+                        modifier = Modifier.testTag("tab_coach")
+                    )
+                }
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(MaterialTheme.colorScheme.background)
             ) {
-                NavigationBarItem(
-                    selected = currentTab == 0,
-                    onClick = { currentTab = 0 },
-                    icon = { Icon(Icons.Default.Kitchen, contentDescription = "Pantry Inventory") },
-                    label = { Text("Pantry") },
-                    modifier = Modifier.testTag("tab_pantry")
-                )
-                NavigationBarItem(
-                    selected = currentTab == 1,
-                    onClick = { currentTab = 1 },
-                    icon = { Icon(Icons.Default.Restaurant, contentDescription = "Diet Logs") },
-                    label = { Text("Diet Log") },
-                    modifier = Modifier.testTag("tab_diet")
-                )
-                NavigationBarItem(
-                    selected = currentTab == 2,
-                    onClick = { currentTab = 2 },
-                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "AI Magic Chef") },
-                    label = { Text("AI Chef") },
-                    modifier = Modifier.testTag("tab_ai_chef")
-                )
-                NavigationBarItem(
-                    selected = currentTab == 3,
-                    onClick = { currentTab = 3 },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Personalized Coaching") },
-                    label = { Text("Coach & Goals") },
-                    modifier = Modifier.testTag("tab_coach")
-                )
+                when (currentTab) {
+                    0 -> PantryTab(
+                        pantryList = pantryList,
+                        loggedInUser = loggedInUser,
+                        onAvatarClick = { showProfileDialog = true },
+                        onAddItem = { name, quantity, unit, category, expiryDays ->
+                            val expiryTimestamp = if (expiryDays != null) {
+                                System.currentTimeMillis() + (expiryDays * 24L * 60L * 60L * 1000L)
+                            } else null
+                            viewModel.addPantryItem(name, quantity, unit, category, expiryTimestamp)
+                        },
+                        onDeleteItem = { item ->
+                            viewModel.deletePantryItem(item)
+                            Toast.makeText(context, "${item.name} removed from pantry", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    1 -> DietTab(
+                        selectedDate = selectedDate,
+                        mealLogs = dietLogs,
+                        goal = goal,
+                        loggedInUser = loggedInUser,
+                        onAvatarClick = { showProfileDialog = true },
+                        onAddLog = { type, name, cal, p, c, f ->
+                            viewModel.addDietLog(type, name, cal, p, c, f)
+                        },
+                        onDeleteLog = { log ->
+                            viewModel.deleteDietLog(log)
+                        },
+                        onPrevDay = {
+                            changeSelectedDateByDays(viewModel, -1)
+                        },
+                        onNextDay = {
+                            changeSelectedDateByDays(viewModel, 1)
+                        },
+                        onSelectToday = {
+                            viewModel.setSelectedDateString(viewModel.todayDateString)
+                        }
+                    )
+                    2 -> ChefTab(
+                        pantryList = pantryList,
+                        recipeState = recipeState,
+                        loggedInUser = loggedInUser,
+                        onAvatarClick = { showProfileDialog = true },
+                        onGenerate = {
+                            viewModel.generateRecipeFromPantry()
+                        },
+                        onCookRecipe = { recipe ->
+                            viewModel.addDietLog("Dinner", recipe.recipeName, recipe.estimatedCalories, recipe.protein, recipe.carbs, recipe.fat)
+                            viewModel.clearRecipeState()
+                            Toast.makeText(context, "Logged ${recipe.recipeName} to dinner list!", Toast.LENGTH_LONG).show()
+                        },
+                        onCancelRecipe = {
+                            viewModel.clearRecipeState()
+                        }
+                    )
+                    3 -> CoachTab(
+                        goal = goal,
+                        mealLogs = dietLogs,
+                        analysisState = analysisState,
+                        loggedInUser = loggedInUser,
+                        onAvatarClick = { showProfileDialog = true },
+                        onSaveGoals = { cal, p, c, f, pref ->
+                            viewModel.updateUserGoals(cal, p, c, f, pref)
+                            Toast.makeText(context, "Goals saved securely!", Toast.LENGTH_SHORT).show()
+                        },
+                        onTriggerAnalysis = {
+                            viewModel.analyzeTodayDiet()
+                        },
+                        onClearAnalysis = {
+                            viewModel.clearAnalysisState()
+                        }
+                    )
+                }
             }
         }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-        ) {
-            when (currentTab) {
-                0 -> PantryTab(
-                    pantryList = pantryList,
-                    onAddItem = { name, quantity, unit, category, expiryDays ->
-                        val expiryTimestamp = if (expiryDays != null) {
-                            System.currentTimeMillis() + (expiryDays * 24L * 60L * 60L * 1000L)
-                        } else null
-                        viewModel.addPantryItem(name, quantity, unit, category, expiryTimestamp)
-                    },
-                    onDeleteItem = { item ->
-                        viewModel.deletePantryItem(item)
-                        Toast.makeText(context, "${item.name} removed from pantry", Toast.LENGTH_SHORT).show()
-                    }
-                )
-                1 -> DietTab(
-                    selectedDate = selectedDate,
-                    mealLogs = dietLogs,
-                    goal = goal,
-                    onAddLog = { type, name, cal, p, c, f ->
-                        viewModel.addDietLog(type, name, cal, p, c, f)
-                    },
-                    onDeleteLog = { log ->
-                        viewModel.deleteDietLog(log)
-                    },
-                    onPrevDay = {
-                        changeSelectedDateByDays(viewModel, -1)
-                    },
-                    onNextDay = {
-                        changeSelectedDateByDays(viewModel, 1)
-                    },
-                    onSelectToday = {
-                        viewModel.setSelectedDateString(viewModel.todayDateString)
-                    }
-                )
-                2 -> ChefTab(
-                    pantryList = pantryList,
-                    recipeState = recipeState,
-                    onGenerate = {
-                        viewModel.generateRecipeFromPantry()
-                    },
-                    onCookRecipe = { recipe ->
-                        viewModel.addDietLog("Dinner", recipe.recipeName, recipe.estimatedCalories, recipe.protein, recipe.carbs, recipe.fat)
-                        viewModel.clearRecipeState()
-                        Toast.makeText(context, "Logged ${recipe.recipeName} to dinner list!", Toast.LENGTH_LONG).show()
-                    },
-                    onCancelRecipe = {
-                        viewModel.clearRecipeState()
-                    }
-                )
-                3 -> CoachTab(
-                    goal = goal,
-                    mealLogs = dietLogs,
-                    analysisState = analysisState,
-                    onSaveGoals = { cal, p, c, f, pref ->
-                        viewModel.updateUserGoals(cal, p, c, f, pref)
-                        Toast.makeText(context, "Goals saved securely!", Toast.LENGTH_SHORT).show()
-                    },
-                    onTriggerAnalysis = {
-                        viewModel.analyzeTodayDiet()
-                    },
-                    onClearAnalysis = {
-                        viewModel.clearAnalysisState()
-                    }
-                )
+    }
+
+    if (showProfileDialog && loggedInUser != null) {
+        EditProfileDialog(
+            user = loggedInUser!!,
+            onDismiss = { showProfileDialog = false },
+            onSave = { name, avatar, about, info ->
+                viewModel.updateProfile(name, avatar, about, info)
+                Toast.makeText(context, "Profile saved!", Toast.LENGTH_SHORT).show()
+            },
+            onLogout = {
+                viewModel.logout()
+                Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
             }
-        }
+        )
     }
 }
 
@@ -192,6 +222,8 @@ private fun changeSelectedDateByDays(viewModel: DietPantryViewModel, days: Int) 
 @Composable
 fun PantryTab(
     pantryList: List<PantryItem>,
+    loggedInUser: UserAccount?,
+    onAvatarClick: () -> Unit,
     onAddItem: (String, Double, String, String, Int?) -> Unit,
     onDeleteItem: (PantryItem) -> Unit
 ) {
@@ -210,11 +242,11 @@ fun PantryTab(
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             // Header Title
-            Text(
-                text = "Pantry Inventory",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
+            MinimalGreetingHeader(
+                title = "Pantry Inventory",
+                subtitle = "Welcome, ${loggedInUser?.fullName ?: ""}",
+                loggedInUser = loggedInUser,
+                onAvatarClick = onAvatarClick
             )
             Text(
                 text = "Keep track of items you have in stock to formulate custom recipes.",
@@ -336,6 +368,34 @@ fun PantryTab(
 }
 
 @Composable
+fun CategoryItemIcon(category: String) {
+    val (icon, bgColor, labelColor) = when (category) {
+        "Produce" -> Triple(Icons.Default.Eco, Color(0xFFE9EFD1), Color(0xFF5C940D))
+        "Dairy" -> Triple(Icons.Default.Opacity, Color(0xFFEFF6FF), Color(0xFF2563EB))
+        "Grains", "Bakery" -> Triple(Icons.Default.BakeryDining, Color(0xFFFFF7ED), Color(0xFFEA580C))
+        "Meat & Fish" -> Triple(Icons.Default.SetMeal, Color(0xFFFEF2F2), Color(0xFFEF4444))
+        "Cans & Jars" -> Triple(Icons.Default.Widgets, Color(0xFFF3E8FF), Color(0xFF9333EA))
+        "Spices" -> Triple(Icons.Default.Grain, Color(0xFFFEF3C7), Color(0xFFD97706))
+        else -> Triple(Icons.Default.List, Color(0xFFF1F5F9), Color(0xFF475569))
+    }
+
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgColor),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = labelColor
+        )
+    }
+}
+
+@Composable
 fun PantryItemCard(item: PantryItem, onDelete: () -> Unit) {
     val expiryDaysRemaining = remember(item.expiryDate) {
         item.expiryDate?.let { date ->
@@ -359,11 +419,12 @@ fun PantryItemCard(item: PantryItem, onDelete: () -> Unit) {
         else -> "Expires in $expiryDaysRemaining days"
     }
 
-    ElevatedCard(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
         ),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier
             .fillMaxWidth()
             .testTag("pantry_item_card_${item.name.lowercase().replace(" ", "_")}")
@@ -371,8 +432,10 @@ fun PantryItemCard(item: PantryItem, onDelete: () -> Unit) {
         Row(
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            CategoryItemIcon(category = item.category)
+
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -611,6 +674,8 @@ fun DietTab(
     selectedDate: String,
     mealLogs: List<DietLog>,
     goal: UserGoal,
+    loggedInUser: UserAccount?,
+    onAvatarClick: () -> Unit,
     onAddLog: (String, String, Int, Double, Double, Double) -> Unit,
     onDeleteLog: (DietLog) -> Unit,
     onPrevDay: () -> Unit,
@@ -634,6 +699,14 @@ fun DietTab(
         modifier = Modifier.fillMaxSize().padding(16.dp).testTag("diet_logs_column"),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        item {
+            MinimalGreetingHeader(
+                title = "Nutritional Analysis",
+                subtitle = "Welcome, ${loggedInUser?.fullName ?: ""}",
+                loggedInUser = loggedInUser,
+                onAvatarClick = onAvatarClick
+            )
+        }
         // Date Selector Bar
         item {
             Card(
@@ -676,78 +749,116 @@ fun DietTab(
 
         // Nutrient Dashboard Panel
         item {
-            ElevatedCard(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+            Card(
+                shape = RoundedCornerShape(32.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFE9EFD1)
+                ),
+                modifier = Modifier.fillMaxWidth().testTag("diet_goals_card")
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Daily Nutrient Intake Progress",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-
+                Column(modifier = Modifier.padding(24.dp)) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
                     ) {
-                        // Calories circle gauge
+                        Column {
+                            Text(
+                                text = "Daily Goal",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF2D331C)
+                            )
+                            Text(
+                                text = "$totalCalories / ${goal.dailyCalorieGoal} kcal",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFF5C624D),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         Box(
-                            modifier = Modifier.size(90.dp),
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.5f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(
-                                progress = caloriePercentage,
-                                modifier = Modifier.fillMaxSize(),
-                                strokeWidth = 8.dp,
-                                color = if (totalCalories > goal.dailyCalorieGoal) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                                tint = Color(0xFF2D331C)
                             )
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "$totalCalories",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 20.sp
-                                )
-                                Text(
-                                    text = "kcal / ${goal.dailyCalorieGoal}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontSize = 9.sp,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
+                        }
+                    }
+
+                    // Progress bar track
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(12.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.White.copy(alpha = 0.3f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(fraction = caloriePercentage)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF5C940D))
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Column / Row distribution of nutrients
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "PROTEIN",
+                                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF5C624D)
+                            )
+                            Text(
+                                text = "${totalProtein.toInt()}g / ${goal.dailyProteinGoal.toInt()}g",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2D331C)
+                            )
                         }
 
-                        Spacer(modifier = Modifier.width(20.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "CARBS",
+                                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF5C624D)
+                            )
+                            Text(
+                                text = "${totalCarbs.toInt()}g / ${goal.dailyCarbsGoal.toInt()}g",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2D331C)
+                            )
+                        }
 
-                        // Linear macros trackers
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Protein
-                            MacroLinearUnit(
-                                title = "Protein",
-                                valueDouble = totalProtein,
-                                goalDouble = goal.dailyProteinGoal,
-                                percentage = proteinPercentage,
-                                color = Color(0xFFE91E63)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "FAT",
+                                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF5C624D)
                             )
-                            // Carbs
-                            MacroLinearUnit(
-                                title = "Carbs",
-                                valueDouble = totalCarbs,
-                                goalDouble = goal.dailyCarbsGoal,
-                                percentage = carbsPercentage,
-                                color = Color(0xFF03A9F4)
-                            )
-                            // Fat
-                            MacroLinearUnit(
-                                title = "Fat",
-                                valueDouble = totalFat,
-                                goalDouble = goal.dailyFatGoal,
-                                percentage = fatPercentage,
-                                color = Color(0xFFFF9800)
+                            Text(
+                                text = "${totalFat.toInt()}g / ${goal.dailyFatGoal.toInt()}g",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2D331C)
                             )
                         }
                     }
@@ -1138,6 +1249,8 @@ private suspend fun autoEstimateNutrition(promptFood: String): NutritionEstimate
 fun ChefTab(
     pantryList: List<PantryItem>,
     recipeState: RecipeUiState,
+    loggedInUser: UserAccount?,
+    onAvatarClick: () -> Unit,
     onGenerate: () -> Unit,
     onCookRecipe: (GeminiRecipe) -> Unit,
     onCancelRecipe: () -> Unit
@@ -1158,11 +1271,11 @@ fun ChefTab(
         // Main Chef Header Cards
         item {
             Column {
-                Text(
-                    text = "AI Magic Chef",
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
+                MinimalGreetingHeader(
+                    title = "AI Magic Chef",
+                    subtitle = "Welcome, ${loggedInUser?.fullName ?: ""}",
+                    loggedInUser = loggedInUser,
+                    onAvatarClick = onAvatarClick
                 )
                 Text(
                     text = "Formulate high-cuisine meals instantly based on elements currently present in your Pantry list.",
@@ -1492,6 +1605,353 @@ fun Icon(imageVector: ImageVector, contentDescription: String?, size: androidx.c
     )
 }
 
+@Composable
+fun AvatarDisplay(avatarId: String, size: androidx.compose.ui.unit.Dp = 44.dp) {
+    val (emoji, bg) = when (avatarId) {
+        "avatar_avocado" -> "🥑" to Color(0xFFE9EFD1)
+        "avatar_apple" -> "🍎" to Color(0xFFFEF2F2)
+        "avatar_water" -> "💧" to Color(0xFFEFF6FF)
+        "avatar_chef" -> "🧑‍🍳" to Color(0xFFF3E8FF)
+        "avatar_sun" -> "☀️" to Color(0xFFFEF3C7)
+        "avatar_gym" -> "🏋️" to Color(0xFFF1F5F9)
+        else -> "👤" to MaterialTheme.colorScheme.primaryContainer
+    }
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(bg),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = emoji, fontSize = (size.value * 0.5f).sp)
+    }
+}
+
+@Composable
+fun MinimalGreetingHeader(
+    title: String,
+    subtitle: String,
+    loggedInUser: UserAccount?,
+    onAvatarClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(bottom = 8.dp, top = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text(
+                text = "GOOD MORNING",
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+        }
+        Box(
+            modifier = Modifier
+                .clickable { onAvatarClick() }
+                .clip(CircleShape)
+        ) {
+            if (loggedInUser != null) {
+                AvatarDisplay(avatarId = loggedInUser.avatarUrl)
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AuthScreen(
+    viewModel: DietPantryViewModel,
+    modifier: Modifier = Modifier
+) {
+    var isLogin by remember { mutableStateOf(true) }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var fullName by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFFDFCF9))
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 450.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFFE9EFD1)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Kitchen,
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                    tint = Color(0xFF5C940D)
+                )
+            }
+
+            Text(
+                text = if (isLogin) "Welcome Back" else "Create Account",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF0F172A)
+            )
+
+            Text(
+                text = if (isLogin) "Log in to track your pantry, plan meals, and receive elite AI coaching." 
+                       else "Join our minimalist wellness companion today.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = Color(0xFF64748B),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (!isLogin) {
+                OutlinedTextField(
+                    value = fullName,
+                    onValueChange = { fullName = it },
+                    label = { Text("Full Name") },
+                    placeholder = { Text("e.g. Alex Rivera") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("signup_name_input")
+                )
+            }
+
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Username or Email") },
+                placeholder = { Text("e.g. alex_rivera") },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().testTag("login_username_input")
+            )
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Password") },
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().testTag("login_password_input")
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Button(
+                onClick = {
+                    if (isLogin) {
+                        viewModel.login(username, password) { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        viewModel.signUp(username, password, fullName) { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            if (success) {
+                                isLogin = true
+                            }
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF5C940D),
+                    contentColor = Color.White
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .testTag(if (isLogin) "login_submit_button" else "signup_submit_button")
+            ) {
+                Text(
+                    text = if (isLogin) "Log In" else "Sign Up",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            TextButton(
+                onClick = { isLogin = !isLogin },
+                modifier = Modifier.testTag("toggle_auth_button")
+            ) {
+                Text(
+                    text = if (isLogin) "Don't have an account? Sign Up" else "Already have an account? Log In",
+                    color = Color(0xFF5C940D),
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditProfileDialog(
+    user: UserAccount,
+    onDismiss: () -> Unit,
+    onSave: (fullName: String, avatarUrl: String, aboutMe: String, information: String) -> Unit,
+    onLogout: () -> Unit
+) {
+    var name by remember { mutableStateOf(user.fullName) }
+    var avatar by remember { mutableStateOf(user.avatarUrl) }
+    var about by remember { mutableStateOf(user.aboutMe) }
+    var info by remember { mutableStateOf(user.information) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFDFCF9)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .testTag("edit_profile_dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Edit Profile",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF0F172A)
+                )
+
+                AvatarDisplay(avatarId = avatar, size = 64.dp)
+
+                Text(
+                    text = "Choose Profile Picture Preset",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF64748B)
+                )
+
+                val presets = listOf(
+                    "avatar_avocado" to "🥑",
+                    "avatar_apple" to "🍎",
+                    "avatar_water" to "💧",
+                    "avatar_chef" to "🧑‍🍳",
+                    "avatar_sun" to "☀️",
+                    "avatar_gym" to "🏋️"
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    presets.forEach { (id, emoji) ->
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (avatar == id) Color(0xFFE9EFD1) else Color.Transparent)
+                                .clickable { avatar = id }
+                                .border(
+                                    width = if (avatar == id) 2.dp else 0.dp,
+                                    color = if (avatar == id) Color(0xFF5C940D) else Color.Transparent,
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = emoji, fontSize = 20.sp)
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Full Name") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("profile_name_input")
+                )
+
+                OutlinedTextField(
+                    value = about,
+                    onValueChange = { about = it },
+                    label = { Text("About Me") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("profile_about_input")
+                )
+
+                OutlinedTextField(
+                    value = info,
+                    onValueChange = { info = it },
+                    label = { Text("Information") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("profile_info_input")
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        onSave(name, avatar, about, info)
+                        onDismiss()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C940D)),
+                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("save_profile_button")
+                ) {
+                    Text("Save Customizations", fontWeight = FontWeight.Bold)
+                }
+
+                TextButton(
+                    onClick = {
+                        onLogout()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("profile_logout_button")
+                ) {
+                    Text("Log Out Account", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
 
 // ==========================================
 // GOALS & PROFILE & COACH TAB VIEW
@@ -1503,6 +1963,8 @@ fun CoachTab(
     goal: UserGoal,
     mealLogs: List<DietLog>,
     analysisState: AnalysisUiState,
+    loggedInUser: UserAccount?,
+    onAvatarClick: () -> Unit,
     onSaveGoals: (Int, Double, Double, Double, String) -> Unit,
     onTriggerAnalysis: () -> Unit,
     onClearAnalysis: () -> Unit
@@ -1520,18 +1982,20 @@ fun CoachTab(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text(
-                text = "Coach & Goals",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "Track your daily nutrient parameters and invoke elite nutrition feedback with AI.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            Column {
+                MinimalGreetingHeader(
+                    title = "Coach & Goals",
+                    subtitle = "Welcome, ${loggedInUser?.fullName ?: ""}",
+                    loggedInUser = loggedInUser,
+                    onAvatarClick = onAvatarClick
+                )
+                Text(
+                    text = "Track your daily nutrient parameters and invoke elite nutrition feedback with AI.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
         }
 
         // COACHING ADVICE PORTION

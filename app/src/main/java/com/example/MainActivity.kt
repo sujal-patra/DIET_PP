@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
             pantryDao = database.pantryDao(),
             dietLogDao = database.dietLogDao(),
             userGoalDao = database.userGoalDao(),
+            userAccountDao = database.userAccountDao(),
             geminiRepository = GeminiRepository()
         )
 

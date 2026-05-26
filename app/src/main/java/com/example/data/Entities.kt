@@ -36,3 +36,15 @@ data class UserGoal(
     val dailyFatGoal: Double = 70.0,
     val dietPreference: String = "None" // "None", "Keto", "Vegan", "Vegetarian", "Gluten Free", "Low Carb"
 )
+
+@Entity(tableName = "user_accounts")
+data class UserAccount(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val username: String,
+    val passwordHash: String,
+    val fullName: String,
+    val avatarUrl: String = "avatar_avocado", // Preset key or external URL
+    val aboutMe: String = "Passionate about healthy living and clean nutrition.",
+    val information: String = "Goal weight: 75kg • Height: 180cm",
+    val isLoggedIn: Boolean = false
+)

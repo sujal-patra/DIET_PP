@@ -6,6 +6,7 @@ class AppRepository(
     private val pantryDao: PantryDao,
     private val dietLogDao: DietLogDao,
     private val userGoalDao: UserGoalDao,
+    private val userAccountDao: UserAccountDao,
     private val geminiRepository: GeminiRepository
 ) {
     // Pantry items queries
@@ -49,6 +50,48 @@ class AppRepository(
 
     suspend fun insertUserGoal(goal: UserGoal) {
         userGoalDao.insertUserGoal(goal)
+    }
+
+    // User Account / Authentication / Profile methods
+    val loggedInUserFlow: Flow<UserAccount?> = userAccountDao.getLoggedInUserFlow()
+
+    suspend fun getLoggedInUser(): UserAccount? {
+        return userAccountDao.getLoggedInUser()
+    }
+
+    suspend fun signUpUser(username: String, passwordPlaintext: String, fullName: String): Boolean {
+        val existing = userAccountDao.getUserByUsername(username.lowercase().trim())
+        if (existing != null) {
+            return false // Username already taken
+        }
+        val newUser = UserAccount(
+            username = username.lowercase().trim(),
+            passwordHash = passwordPlaintext, // Plaintext/simple storage for local sandbox representation of signup
+            fullName = fullName.trim(),
+            isLoggedIn = true // Log them in immediately upon signup
+        )
+        // Ensure only one is logged in at a time
+        userAccountDao.logoutAll()
+        userAccountDao.insertUser(newUser)
+        return true
+    }
+
+    suspend fun loginUser(username: String, passwordPlaintext: String): Boolean {
+        val user = userAccountDao.getUserByUsername(username.lowercase().trim())
+        if (user != null && user.passwordHash == passwordPlaintext) {
+            userAccountDao.logoutAll()
+            userAccountDao.setLoggedIn(user.id)
+            return true
+        }
+        return false
+    }
+
+    suspend fun logoutUser() {
+        userAccountDao.logoutAll()
+    }
+
+    suspend fun updateUserProfile(user: UserAccount) {
+        userAccountDao.insertUser(user)
     }
 
     // AI Queries
