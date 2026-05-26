@@ -1,0 +1,6 @@
+{
+  "name": "Diet & Pantry",
+  "description": "A smart nutrition assistant to manage your pantry inventory, track meals, and generate personalized recipes using Gemini AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
